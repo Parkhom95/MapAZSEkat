@@ -3,40 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>АЗС Екатеринбург — Яндекс Карты</title>
+    <title>АЗС Екатеринбург — 2GIS</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://api-maps.yandex.ru/v3/?apikey=85b4b104-e58e-4927-9946-b8f9e614d021&lang=ru_RU"></script>
+
+    <!-- Подключение карт 2GIS API v2.0 -->
+    <!-- Для коммерческих проектов или во избежание лимитов допишите в конец ссылки: &key=ВАШ_КЛЮЧ -->
+    <script src="https://maps.api.2gis.ru/2.0/loader.js?pkg=basic"></script>
+
     <style>
-        #map { height: calc(100vh - 60px); width: 100%; }
+        #map { height: calc(100vh - 60px); width: 100%; background-color: #f1f5f9; }
         body {
             color: var(--tg-theme-text-color, #222222);
             background-color: var(--tg-theme-bg-color, #ffffff);
         }
-        /* Стили для кастомного попапа Яндекс карт */
-        .ymaps3-popup {
-            background: white;
-            padding: 12px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            font-family: sans-serif;
-            max-width: 240px;
-        }
+        /* Корректировка стилей попапа 2GIS, чтобы они выглядели аккуратно */
+        .dg-popup-content { padding: 4px !important; }
     </style>
 </head>
 <body class="p-0 m-0 overflow-hidden font-sans select-none">
     <div id="app" class="flex flex-col h-screen">
+        <!-- Верхняя панель -->
         <header class="flex items-center justify-between px-4 h-[60px] bg-slate-900 text-white shadow-md z-[1000]">
             <div>
                 <h1 class="text-base font-bold leading-tight">АЗС Екатеринбург</h1>
-                <p class="text-[10px] text-slate-400">Яндекс.Карты API v3.0</p>
+                <p class="text-[10px] text-emerald-400">Карта на движке 2GIS</p>
             </div>
             <span class="text-xs bg-emerald-600 px-2 py-1 rounded-full font-medium">
-                {{ arrStations.length }} точек
+                {{ arrStations.length }} станций
             </span>
         </header>
 
+        <!-- Контейнер карты -->
         <div id="map"></div>
     </div>
 
@@ -45,7 +47,7 @@
 
         createApp({
             setup() {
-                // Полная база координат АЗС Екатеринбурга
+                // База координат АЗС Екатеринбурга
                 const arrStations = ref([
                     // Газпромнефть
                     { id: 1, name: 'Газпромнефть №102', lat: 56.836152, lng: 60.650821, address: 'ул. Малышева, 143', fuel: ['АИ-92', 'АИ-95', 'G-95', 'ДТ'] },
@@ -71,49 +73,43 @@
                     { id: 15, name: 'Татнефть №210', lat: 56.815412, lng: 60.534102, address: 'ул. Амундсена, 125', fuel: ['АИ-92', 'АИ-95', 'Танеко ДТ'] }
                 ]);
 
-                onMounted(async () => {
-                    // Инициализация Telegram SDK
+                onMounted(() => {
+                    // Сигнализируем Telegram Mini App о готовности
                     if (window.Telegram && window.Telegram.WebApp) {
-                        const objTg = window.Telegram.WebApp;
-                        objTg.ready();
-                        objTg.expand();
+                        window.Telegram.WebApp.ready();
+                        window.Telegram.WebApp.expand();
                     }
 
-                    // Ожидаем загрузку модулей Яндекс Карт v3
-                    await ymaps3.ready;
-                    const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = ymaps3;
-
-                    // Создаем объект карты
-                    const objMap = new YMap(document.getElementById('map'), {
-                        location: {
-                            center: [60.6057, 56.8389], // Координаты Екб в ymaps3 передаются как [lng, lat]
-                            zoom: 12
-                        }
-                    });
-
-                    // Добавляем слой схемы дорог и слой объектов (маркеров)
-                    objMap.addChild(new YMapDefaultSchemeLayer());
-                    objMap.addChild(new YMapDefaultFeaturesLayer());
-
-                    // Отрисовка маркеров АЗС
-                    arrStations.value.forEach(objStation => {
-                        // Создаем DOM-элемент маркера
-                        const elMarker = document.createElement('div');
-                        elMarker.className = 'cursor-pointer transform -translate-x-1/2 -translate-y-1/2 bg-red-600 border-2 border-white text-white rounded-full p-2 shadow-lg hover:scale-110 transition-transform duration-200';
-                        elMarker.innerHTML = '⛽';
-
-                        // Логика клика (простой встроенный алерт или кастомное инфо-окно)
-                        elMarker.addEventListener('click', () => {
-                            const strFuelList = objStation.fuel.join(', ');
-                            alert(`${objStation.name}\nАдрес: ${objStation.address}\nТопливо: ${strFuelList}`);
+                    // Ожидаем загрузку глобального объекта DG от 2GIS
+                    DG.then(() => {
+                        // Инициализируем карту (Центр — Екатеринбург)
+                        const objMap = DG.map('map', {
+                            center: [56.8389, 60.6057],
+                            zoom: 12,
+                            zoomControl: true,
+                            fullscreenControl: false
                         });
 
-                        // Добавляем маркер на карту (в v3 передается объект маркера с координатами)
-                        const objYMapsMarker = new YMapMarker({
-                            coordinates: [objStation.lng, objStation.lat]
-                        }, elMarker);
+                        // Перебираем массив АЗС и создаем маркеры
+                        arrStations.value.forEach(objStation => {
+                            // Формируем красивый HTML-вид списка топлива для попапа
+                            const strFuelBadges = objStation.fuel.map(strFuel =>
+                                `<span style="background-color: #eff6ff; color: #1e40af; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin: 2px; display: inline-block; border: 1px solid #bfdbfe;">${strFuel}</span>`
+                            ).join('');
 
-                        objMap.addChild(objYMapsMarker);
+                            const strPopupContent = `
+                                <div style="font-family: sans-serif; color: #0f172a; padding: 4px; min-width: 180px;">
+                                    <b style="font-size: 13px; display: block; margin-bottom: 2px; color: #0f172a;">${objStation.name}</b>
+                                    <span style="font-size: 11px; color: #64748b; display: block; margin-bottom: 6px;">${objStation.address}</span>
+                                    <div style="margin-left: -2px; margin-right: -2px;">${strFuelBadges}</div>
+                                </div>
+                            `;
+
+                            // Добавляем маркер на карту 2GIS
+                            DG.marker([objStation.lat, objStation.lng])
+                                .addTo(objMap)
+                                .bindPopup(strPopupContent);
+                        });
                     });
                 });
 
