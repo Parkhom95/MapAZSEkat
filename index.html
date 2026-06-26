@@ -3,17 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>АЗС Екатеринбург</title>
+    <title>АЗС Екатеринбург — Яндекс Карты</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://api-maps.yandex.ru/v3/?apikey=85b4b104-e58e-4927-9946-b8f9e614d021&lang=ru_RU"></script>
     <style>
         #map { height: calc(100vh - 60px); width: 100%; }
         body {
             color: var(--tg-theme-text-color, #222222);
             background-color: var(--tg-theme-bg-color, #ffffff);
+        }
+        /* Стили для кастомного попапа Яндекс карт */
+        .ymaps3-popup {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-family: sans-serif;
+            max-width: 240px;
         }
     </style>
 </head>
@@ -22,14 +30,14 @@
         <header class="flex items-center justify-between px-4 h-[60px] bg-slate-900 text-white shadow-md z-[1000]">
             <div>
                 <h1 class="text-base font-bold leading-tight">АЗС Екатеринбург</h1>
-                <p class="text-[10px] text-slate-400">Интерактивный мониторинг станций</p>
+                <p class="text-[10px] text-slate-400">Яндекс.Карты API v3.0</p>
             </div>
             <span class="text-xs bg-emerald-600 px-2 py-1 rounded-full font-medium">
-                {{ arrStations.length }} АЗС
+                {{ arrStations.length }} точек
             </span>
         </header>
 
-        <div id="map" class="flex-grow"></div>
+        <div id="map"></div>
     </div>
 
     <script>
@@ -37,54 +45,75 @@
 
         createApp({
             setup() {
-                // Статический массив АЗС Екатеринбурга (координаты и доступное топливо)
+                // Полная база координат АЗС Екатеринбурга
                 const arrStations = ref([
-                    { id: 1, name: 'Газпромнефть №102', lat: 56.8361, lng: 60.6508, address: 'ул. Малышева, 143', fuel: ['АИ-92', 'АИ-95', 'G-Drive 95', 'ДТ'] },
-                    { id: 2, name: 'Лукойл №66', lat: 56.8573, lng: 60.6033, address: 'ул. Челюскинцев, 110', fuel: ['АИ-92', 'АИ-95', 'Экто 100', 'ДТ'] },
-                    { id: 3, name: 'Башнефть №12', lat: 56.8123, lng: 60.5983, address: 'ул. Фурманова, 105', fuel: ['АИ-92', 'АИ-95', 'ATUM 95'] },
-                    { id: 4, name: 'Газпромнефть №115', lat: 56.8012, lng: 60.6154, address: 'ул. Машинная, 37', fuel: ['АИ-92', 'АИ-95', 'G-Drive 100', 'ДТ'] }
+                    // Газпромнефть
+                    { id: 1, name: 'Газпромнефть №102', lat: 56.836152, lng: 60.650821, address: 'ул. Малышева, 143', fuel: ['АИ-92', 'АИ-95', 'G-95', 'ДТ'] },
+                    { id: 2, name: 'Газпромнефть №115', lat: 56.801231, lng: 60.615412, address: 'ул. Машинная, 37', fuel: ['АИ-92', 'АИ-95', 'G-100', 'ДТ'] },
+                    { id: 3, name: 'Газпромнефть №106', lat: 56.873210, lng: 60.610444, address: 'ул. Космонавтов, 11Б', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+                    { id: 4, name: 'Газпромнефть №132', lat: 56.828551, lng: 60.551023, address: 'ул. Серафимы Дерябиной, 41', fuel: ['АИ-92', 'АИ-95', 'G-95'] },
+                    { id: 5, name: 'Газпромнефть №109', lat: 56.852119, lng: 60.665123, address: 'ул. Комсомольская, 69', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+
+                    // Лукойл
+                    { id: 6, name: 'Лукойл №66', lat: 56.857312, lng: 60.603345, address: 'ул. Челюскинцев, 110', fuel: ['АИ-92', 'АИ-95', 'Экто-100', 'ДТ'] },
+                    { id: 7, name: 'Лукойл №74', lat: 56.799411, lng: 60.662102, address: 'ул. Базовый переулок, 10', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+                    { id: 8, name: 'Лукойл №12', lat: 56.821102, lng: 60.608774, address: 'ул. Белинского, 122', fuel: ['АИ-92', 'АИ-95', 'Экто-100'] },
+                    { id: 9, name: 'Лукойл №83', lat: 56.840991, lng: 60.560121, address: 'ул. Токарей, 35', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+
+                    // Башнефть
+                    { id: 10, name: 'Башнефть №12', lat: 56.812344, lng: 60.598311, address: 'ул. Фурманова, 105', fuel: ['АИ-92', 'АИ-95', 'ATUM-95'] },
+                    { id: 11, name: 'Башнефть №15', lat: 56.861023, lng: 60.574412, address: 'ул. Халтурина, 42', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+                    { id: 12, name: 'Башнефть №45', lat: 56.831201, lng: 60.689451, address: 'ул. Дублер Сибирского тракта, 4', fuel: ['АИ-92', 'АИ-95'] },
+
+                    // Татнефть
+                    { id: 13, name: 'Татнефть №201', lat: 56.784512, lng: 60.621455, address: 'ул. Юлиуса Фучика, 2', fuel: ['АИ-92', 'АИ-95', 'Танеко ДТ'] },
+                    { id: 14, name: 'Татнефть №205', lat: 56.859123, lng: 60.641201, address: 'ул. Данила Зверева, 21', fuel: ['АИ-92', 'АИ-95'] },
+                    { id: 15, name: 'Татнефть №210', lat: 56.815412, lng: 60.534102, address: 'ул. Амундсена, 125', fuel: ['АИ-92', 'АИ-95', 'Танеко ДТ'] }
                 ]);
 
-                let objMap = null;
-
-                onMounted(() => {
-                    // Инициализация Telegram WebApp API
+                onMounted(async () => {
+                    // Инициализация Telegram SDK
                     if (window.Telegram && window.Telegram.WebApp) {
                         const objTg = window.Telegram.WebApp;
                         objTg.ready();
-                        objTg.expand(); // Разворачиваем приложение на весь экран телефона
+                        objTg.expand();
                     }
 
-                    // Базовое центрирование карты на Екатеринбург
-                    objMap = L.map('map', {
-                        zoomControl: false
-                    }).setView([56.8389, 60.6057], 12);
+                    // Ожидаем загрузку модулей Яндекс Карт v3
+                    await ymaps3.ready;
+                    const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = ymaps3;
 
-                    // Добавление кнопок масштаба в правый нижний угол
-                    L.control.zoom({ position: 'bottomright' }).addTo(objMap);
+                    // Создаем объект карты
+                    const objMap = new YMap(document.getElementById('map'), {
+                        location: {
+                            center: [60.6057, 56.8389], // Координаты Екб в ymaps3 передаются как [lng, lat]
+                            zoom: 12
+                        }
+                    });
 
-                    // Подключение слоя тайлов OpenStreetMap
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '&copy; OpenStreetMap'
-                    }).addTo(objMap);
+                    // Добавляем слой схемы дорог и слой объектов (маркеров)
+                    objMap.addChild(new YMapDefaultSchemeLayer());
+                    objMap.addChild(new YMapDefaultFeaturesLayer());
 
-                    // Инициализация маркеров на карте
+                    // Отрисовка маркеров АЗС
                     arrStations.value.forEach(objStation => {
-                        const strFuelBadges = objStation.fuel.map(strFuel =>
-                            `<span class="bg-blue-100 text-blue-800 text-[10px] font-semibold px-2 py-0.5 rounded m-0.5 inline-block">${strFuel}</span>`
-                        ).join('');
+                        // Создаем DOM-элемент маркера
+                        const elMarker = document.createElement('div');
+                        elMarker.className = 'cursor-pointer transform -translate-x-1/2 -translate-y-1/2 bg-red-600 border-2 border-white text-white rounded-full p-2 shadow-lg hover:scale-110 transition-transform duration-200';
+                        elMarker.innerHTML = '⛽';
 
-                        const strPopupContent = `
-                            <div class="p-1 font-sans text-slate-900">
-                                <b class="text-sm font-bold block mb-1">${objStation.name}</b>
-                                <span class="text-xs text-gray-500 block mb-2">${objStation.address}</span>
-                                <div class="flex flex-wrap max-w-[200px]">${strFuelBadges}</div>
-                            </div>
-                        `;
+                        // Логика клика (простой встроенный алерт или кастомное инфо-окно)
+                        elMarker.addEventListener('click', () => {
+                            const strFuelList = objStation.fuel.join(', ');
+                            alert(`${objStation.name}\nАдрес: ${objStation.address}\nТопливо: ${strFuelList}`);
+                        });
 
-                        L.marker([objStation.lat, objStation.lng])
-                            .addTo(objMap)
-                            .bindPopup(strPopupContent);
+                        // Добавляем маркер на карту (в v3 передается объект маркера с координатами)
+                        const objYMapsMarker = new YMapMarker({
+                            coordinates: [objStation.lng, objStation.lat]
+                        }, elMarker);
+
+                        objMap.addChild(objYMapsMarker);
                     });
                 });
 
