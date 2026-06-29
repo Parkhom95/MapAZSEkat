@@ -3,43 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>АЗС Екатеринбург — 2GIS</title>
-    <!-- Tailwind CSS -->
+    <title>МетеоРадар Екатеринбург</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Vue 3 CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- Telegram Web App SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-    <!-- Подключение карт 2GIS API v2.0 -->
-    <!-- Для коммерческих проектов или во избежание лимитов допишите в конец ссылки: &key=ВАШ_КЛЮЧ -->
-    <script src="https://maps.api.2gis.ru/2.0/loader.js?pkg=basic"></script>
-
     <style>
-        #map { height: calc(100vh - 60px); width: 100%; background-color: #f1f5f9; }
+        #map { height: 50vh; width: 100%; }
         body {
             color: var(--tg-theme-text-color, #222222);
             background-color: var(--tg-theme-bg-color, #ffffff);
         }
-        /* Корректировка стилей попапа 2GIS, чтобы они выглядели аккуратно */
-        .dg-popup-content { padding: 4px !important; }
     </style>
 </head>
-<body class="p-0 m-0 overflow-hidden font-sans select-none">
-    <div id="app" class="flex flex-col h-screen">
-        <!-- Верхняя панель -->
-        <header class="flex items-center justify-between px-4 h-[60px] bg-slate-900 text-white shadow-md z-[1000]">
+<body class="p-0 m-0 font-sans select-none bg-slate-950 text-white">
+    <div id="app" class="flex flex-col h-screen justify-between">
+        <header class="flex items-center justify-between px-4 h-[60px] bg-slate-900 shadow-md z-[1000]">
             <div>
-                <h1 class="text-base font-bold leading-tight">АЗС Екатеринбург</h1>
-                <p class="text-[10px] text-emerald-400">Карта на движке 2GIS</p>
+                <h1 class="text-base font-bold leading-tight">МетеоРадар Екб</h1>
+                <p class="text-[10px] text-blue-400">Карта осадков и прогноз погоды</p>
             </div>
-            <span class="text-xs bg-emerald-600 px-2 py-1 rounded-full font-medium">
-                {{ arrStations.length }} станций
-            </span>
+            <div v-if="objForecast" class="text-right">
+                <span class="text-lg font-black text-amber-400">{{ objForecast.current.temperature_2m }}°C</span>
+            </div>
         </header>
 
-        <!-- Контейнер карты -->
-        <div id="map"></div>
+        <div id="map" class="relative flex-grow">
+            <div class="absolute bottom-4 left-4 z-[1000] bg-slate-900/90 px-3 py-1.5 rounded-lg text-xs font-mono shadow-md border border-slate-700">
+                🌧️ Радар: {{ strTimeLabel }}
+            </div>
+        </div>
+
+        <div class="bg-slate-900 p-4 border-t border-slate-800 h-[40vh] overflow-y-auto">
+            <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Прогноз на 3 дня</h2>
+
+            <div v-if="objForecast" class="space-y-3">
+                <div v-for="(strDate, intIdx) in objForecast.daily.time.slice(0, 3)" :key="intIdx"
+                     class="flex items-center justify-between bg-slate-800/50 p-3 rounded-xl border border-slate-700/50">
+                    <span class="text-sm font-medium">{{ formatDate(strDate) }}</span>
+                    <div class="flex space-x-4 text-sm">
+                        <span class="text-blue-400">от {{ Math.round(objForecast.daily.temperature_2m_min[intIdx]) }}°C</span>
+                        <span class="text-amber-400">до {{ Math.round(objForecast.daily.temperature_2m_max[intIdx]) }}°C</span>
+                    </div>
+                </div>
+            </div>
+            <div v-else class="text-center py-8 text-slate-500 text-sm">
+                Загрузка метеоданных...
+            </div>
+        </div>
     </div>
 
     <script>
@@ -47,74 +59,99 @@
 
         createApp({
             setup() {
-                // База координат АЗС Екатеринбурга
-                const arrStations = ref([
-                    // Газпромнефть
-                    { id: 1, name: 'Газпромнефть №102', lat: 56.836152, lng: 60.650821, address: 'ул. Малышева, 143', fuel: ['АИ-92', 'АИ-95', 'G-95', 'ДТ'] },
-                    { id: 2, name: 'Газпромнефть №115', lat: 56.801231, lng: 60.615412, address: 'ул. Машинная, 37', fuel: ['АИ-92', 'АИ-95', 'G-100', 'ДТ'] },
-                    { id: 3, name: 'Газпромнефть №106', lat: 56.873210, lng: 60.610444, address: 'ул. Космонавтов, 11Б', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
-                    { id: 4, name: 'Газпромнефть №132', lat: 56.828551, lng: 60.551023, address: 'ул. Серафимы Дерябиной, 41', fuel: ['АИ-92', 'АИ-95', 'G-95'] },
-                    { id: 5, name: 'Газпромнефть №109', lat: 56.852119, lng: 60.665123, address: 'ул. Комсомольская, 69', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+                const objForecast = ref(null);
+                const strTimeLabel = ref("Загрузка...");
 
-                    // Лукойл
-                    { id: 6, name: 'Лукойл №66', lat: 56.857312, lng: 60.603345, address: 'ул. Челюскинцев, 110', fuel: ['АИ-92', 'АИ-95', 'Экто-100', 'ДТ'] },
-                    { id: 7, name: 'Лукойл №74', lat: 56.799411, lng: 60.662102, address: 'ул. Базовый переулок, 10', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
-                    { id: 8, name: 'Лукойл №12', lat: 56.821102, lng: 60.608774, address: 'ул. Белинского, 122', fuel: ['АИ-92', 'АИ-95', 'Экто-100'] },
-                    { id: 9, name: 'Лукойл №83', lat: 56.840991, lng: 60.560121, address: 'ул. Токарей, 35', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
+                let objMap = null;
+                let arrTimestamps = [];
+                let intCurrentFrame = 0;
+                let objRadarLayer = null;
 
-                    // Башнефть
-                    { id: 10, name: 'Башнефть №12', lat: 56.812344, lng: 60.598311, address: 'ул. Фурманова, 105', fuel: ['АИ-92', 'АИ-95', 'ATUM-95'] },
-                    { id: 11, name: 'Башнефть №15', lat: 56.861023, lng: 60.574412, address: 'ул. Халтурина, 42', fuel: ['АИ-92', 'АИ-95', 'ДТ'] },
-                    { id: 12, name: 'Башнефть №45', lat: 56.831201, lng: 60.689451, address: 'ул. Дублер Сибирского тракта, 4', fuel: ['АИ-92', 'АИ-95'] },
+                // Функция форматирования даты для интерфейса
+                const formatDate = (strRawDate) => {
+                    const objD = new Date(strRawDate);
+                    return objD.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' });
+                };
 
-                    // Татнефть
-                    { id: 13, name: 'Татнефть №201', lat: 56.784512, lng: 60.621455, address: 'ул. Юлиуса Фучика, 2', fuel: ['АИ-92', 'АИ-95', 'Танеко ДТ'] },
-                    { id: 14, name: 'Татнефть №205', lat: 56.859123, lng: 60.641201, address: 'ул. Данила Зверева, 21', fuel: ['АИ-92', 'АИ-95'] },
-                    { id: 15, name: 'Татнефть №210', lat: 56.815412, lng: 60.534102, address: 'ул. Амундсена, 125', fuel: ['АИ-92', 'АИ-95', 'Танеко ДТ'] }
-                ]);
+                // Инициализация слоя радара RainViewer
+                const initRadarAnimation = async () => {
+                    try {
+                        const objResponse = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+                        const objData = await objResponse.json();
+
+                        arrTimestamps = objData.radar.past; // Массив меток времени за последние 2 часа
+                        if (arrTimestamps.length === 0) return;
+
+                        // Запускаем цикл анимации слоев
+                        setInterval(() => {
+                            showNextRadarFrame();
+                        }, 1200); // Смена кадров каждые 1.2 секунды
+
+                    } catch (objErr) {
+                        console.error("Ошибка API радара:", objErr);
+                    }
+                };
+
+                // Отображение конкретного кадра осадков
+                const showNextRadarFrame = () => {
+                    if (arrTimestamps.length === 0) return;
+
+                    const intTimestamp = arrTimestamps[intCurrentFrame];
+
+                    // Удаляем старый слой, если он был
+                    if (objRadarLayer) {
+                        objMap.removeLayer(objRadarLayer);
+                    }
+
+                    // Формируем слой тайлов радара для текущего таймстампа
+                    objRadarLayer = L.tileLayer(`https://tilecache.rainviewer.com/v2/radar/${intTimestamp}/256/{z}/{x}/{y}/2/1_1.png`, {
+                        opacity: 0.65,
+                        zIndex: 500
+                    });
+
+                    objRadarLayer.addTo(objMap);
+
+                    // Обновляем временную метку на экране
+                    const objDate = new Date(intTimestamp * 1000);
+                    strTimeLabel.value = objDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+
+                    // Переходим к следующему кадру
+                    intCurrentFrame = (intCurrentFrame + 1) % arrTimestamps.length;
+                };
+
+                // Загрузка числового прогноза погоды (Open-Meteo)
+                const loadWeatherForecast = async () => {
+                    const strWeatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=56.8389&longitude=60.6057&current=temperature_2m&daily=temperature_2m_max,temperature_2m_min&timezone=auto";
+                    try {
+                        const objResponse = await fetch(strWeatherUrl);
+                        objForecast.value = await objResponse.json();
+                    } catch (objErr) {
+                        console.error("Ошибка загрузки погоды:", objErr);
+                    }
+                };
 
                 onMounted(() => {
-                    // Сигнализируем Telegram Mini App о готовности
                     if (window.Telegram && window.Telegram.WebApp) {
                         window.Telegram.WebApp.ready();
                         window.Telegram.WebApp.expand();
                     }
 
-                    // Ожидаем загрузку глобального объекта DG от 2GIS
-                    DG.then(() => {
-                        // Инициализируем карту (Центр — Екатеринбург)
-                        const objMap = DG.map('map', {
-                            center: [56.8389, 60.6057],
-                            zoom: 12,
-                            zoomControl: true,
-                            fullscreenControl: false
-                        });
+                    // Базовая карта (Центр: Екатеринбург)
+                    objMap = L.map('map', { zoomControl: false }).setView([56.8389, 60.6057], 9);
 
-                        // Перебираем массив АЗС и создаем маркеры
-                        arrStations.value.forEach(objStation => {
-                            // Формируем красивый HTML-вид списка топлива для попапа
-                            const strFuelBadges = objStation.fuel.map(strFuel =>
-                                `<span style="background-color: #eff6ff; color: #1e40af; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; margin: 2px; display: inline-block; border: 1px solid #bfdbfe;">${strFuel}</span>`
-                            ).join('');
+                    // Используем стильную темную подложку карты (CartoDB DarkMatter), чтобы радар осадков смотрелся контрастно
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                        attribution: '&copy; OpenStreetMap &copy; CartoDB'
+                    }).addTo(objMap);
 
-                            const strPopupContent = `
-                                <div style="font-family: sans-serif; color: #0f172a; padding: 4px; min-width: 180px;">
-                                    <b style="font-size: 13px; display: block; margin-bottom: 2px; color: #0f172a;">${objStation.name}</b>
-                                    <span style="font-size: 11px; color: #64748b; display: block; margin-bottom: 6px;">${objStation.address}</span>
-                                    <div style="margin-left: -2px; margin-right: -2px;">${strFuelBadges}</div>
-                                </div>
-                            `;
-
-                            // Добавляем маркер на карту 2GIS
-                            DG.marker([objStation.lat, objStation.lng])
-                                .addTo(objMap)
-                                .bindPopup(strPopupContent);
-                        });
-                    });
+                    loadWeatherForecast();
+                    initRadarAnimation();
                 });
 
                 return {
-                    arrStations
+                    objForecast,
+                    strTimeLabel,
+                    formatDate
                 };
             }
         }).mount('#app');
